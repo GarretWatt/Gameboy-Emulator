@@ -1,0 +1,1276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Watt Player — Game Boy Emulator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --page-bg:#f2efe6;
+    --page-text:#2b2a26;
+    --page-muted:#7a776b;
+    --shell:#cdcabb;
+    --shell-hi:#e2e0d2;
+    --shell-lo:#a9a692;
+    --shell-line:#8f8c78;
+    --bezel:#232320;
+    --screen-trim:#5b5c4c;
+    --maroon:#7c2e42;
+    --maroon-lo:#5e2233;
+    --maroon-hi:#9a4258;
+    --led-off:#5c1c26;
+    --led-on:#ff4d43;
+    --card:#ffffff;
+    --card-line:#00000014;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --page-bg:#15151a;
+      --page-text:#e9e7de;
+      --page-muted:#9b988c;
+      --card:#1f1f24;
+      --card-line:#ffffff1a;
+    }
+  }
+  :root[data-theme="dark"]{
+    --page-bg:#15151a;
+    --page-text:#e9e7de;
+    --page-muted:#9b988c;
+    --card:#1f1f24;
+    --card-line:#ffffff1a;
+  }
+
+  *{box-sizing:border-box;}
+  html,body{margin:0; padding:0;}
+  body{
+    min-height:100vh;
+    background:var(--page-bg);
+    color:var(--page-text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    display:flex; flex-direction:column; align-items:center;
+    padding:28px 16px 40px;
+    gap:22px;
+  }
+
+  .masthead{
+    display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; justify-content:center;
+    text-align:center;
+  }
+  .masthead h1{
+    font-family:"Baloo 2", -apple-system, sans-serif;
+    font-weight:800; font-style:italic;
+    font-size:1.7rem; letter-spacing:.01em; margin:0;
+    color:var(--maroon);
+  }
+  .masthead span{
+    font-size:.85rem; color:var(--page-muted); font-weight:500;
+  }
+
+  /* ---- device shell ---- */
+  .device{
+    width:min(400px, 92vw);
+    background:linear-gradient(160deg, var(--shell-hi), var(--shell) 40%, var(--shell-lo));
+    border-radius:26px 26px 46px 26px;
+    padding:22px 20px 26px;
+    box-shadow: 0 2px 0 var(--shell-line) inset, 0 18px 40px rgba(0,0,0,.28), 0 2px 6px rgba(0,0,0,.15);
+    position:relative;
+  }
+  .device-top{
+    display:flex; justify-content:space-between; align-items:center; padding:0 4px 14px;
+  }
+  .brand{
+    font-family:"Baloo 2", sans-serif; font-weight:700; font-style:italic;
+    font-size:.95rem; color:var(--maroon-lo); letter-spacing:.02em;
+  }
+  .led{
+    width:9px; height:9px; border-radius:50%;
+    background:var(--led-off);
+    box-shadow: 0 0 0 2px rgba(0,0,0,.12) inset;
+    transition:background .15s, box-shadow .15s;
+  }
+  .led.on{
+    background:var(--led-on);
+    box-shadow: 0 0 8px 2px rgba(255,77,67,.75);
+  }
+  .led-row{ display:flex; align-items:center; gap:6px; font-size:.65rem; color:var(--page-muted); }
+
+  .screen-bezel{
+    background:var(--bezel);
+    border-radius:10px;
+    padding:16px 16px 12px;
+    box-shadow: 0 1px 0 rgba(255,255,255,.06) inset, 0 6px 14px rgba(0,0,0,.35) inset;
+  }
+  .screen-frame{
+    border:3px solid var(--screen-trim);
+    border-radius:3px;
+    padding:6px;
+    background:#0b0f0a;
+  }
+  canvas{
+    display:block;
+    width:100%;
+    aspect-ratio:160/144;
+    image-rendering:pixelated;
+    image-rendering:crisp-edges;
+    background:#9bbc0f;
+  }
+  .screen-caption{
+    display:flex; justify-content:space-between; align-items:center;
+    padding:8px 4px 0;
+    font-size:.62rem; letter-spacing:.06em; color:#8b8a7c;
+  }
+  .rom-title{
+    font-size:.62rem; color:#8b8a7c; max-width:65%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+
+  /* ---- controls ---- */
+  .controls{
+    margin-top:22px;
+    display:grid;
+    grid-template-columns:1fr auto 1fr;
+    align-items:center;
+    gap:10px;
+  }
+  .dpad{
+    position:relative;
+    width:104px; height:104px;
+    justify-self:start;
+    margin-left:6px;
+  }
+  .dpad-shape{
+    position:absolute; inset:0;
+    background:linear-gradient(180deg,#39392f,#232320);
+    box-shadow:0 2px 3px rgba(0,0,0,.4), 0 0 0 1px rgba(0,0,0,.25) inset;
+    clip-path:polygon(34px 0, 70px 0, 70px 34px, 104px 34px, 104px 70px, 70px 70px, 70px 104px, 34px 104px, 34px 70px, 0 70px, 0 34px, 34px 34px);
+    pointer-events:none;
+  }
+  .dpad-shape::after{
+    content:"";
+    position:absolute; inset:0;
+    clip-path:polygon(34px 0, 70px 0, 70px 34px, 104px 34px, 104px 70px, 70px 70px, 70px 104px, 34px 104px, 34px 70px, 0 70px, 0 34px, 34px 34px);
+    background:linear-gradient(180deg, rgba(255,255,255,.06), transparent 40%);
+  }
+  .dpad button{
+    position:absolute;
+    width:36px; height:36px;
+    background:transparent;
+    border:none;
+    color:#cfcdb8;
+    font-size:.95rem;
+    display:flex; align-items:center; justify-content:center;
+    touch-action:none;
+    -webkit-user-select:none; user-select:none;
+  }
+  .dpad button::after{
+    content:"";
+    position:absolute; inset:0;
+    background:rgba(255,255,255,0);
+    transition:background .05s;
+  }
+  .dpad button:active::after, .dpad button.pressed::after{ background:rgba(255,255,255,.14); }
+  .dpad .up{ top:0; left:34px; }
+  .dpad .down{ bottom:0; left:34px; }
+  .dpad .left{ left:0; top:34px; }
+  .dpad .right{ right:0; top:34px; }
+
+  .ab-cluster{
+    display:flex; align-items:center; gap:14px; justify-self:end; margin-right:2px;
+    transform:rotate(-18deg);
+  }
+  .ab-btn{
+    width:48px; height:48px; border-radius:50%;
+    background:linear-gradient(160deg, var(--maroon-hi), var(--maroon) 55%, var(--maroon-lo));
+    color:#f0dde1; font-family:"Baloo 2", sans-serif; font-weight:700; font-size:1rem;
+    border:none;
+    box-shadow: 0 3px 0 var(--maroon-lo), 0 6px 10px rgba(0,0,0,.28);
+    touch-action:none; -webkit-user-select:none; user-select:none;
+  }
+  .ab-btn:active, .ab-btn.pressed{ box-shadow:0 1px 0 var(--maroon-lo); transform:translateY(2px); }
+  .ab-cluster .b-btn{ margin-top:20px; }
+
+  .meta-row{
+    grid-column:1 / -1;
+    display:flex; justify-content:center; gap:22px; margin-top:6px;
+  }
+  .pill-btn{
+    padding:7px 16px; border-radius:14px; border:none;
+    background:#3a3830; color:#d8d6c6;
+    font-size:.62rem; letter-spacing:.08em; font-weight:600;
+    transform:rotate(-18deg);
+    touch-action:none; -webkit-user-select:none; user-select:none;
+  }
+  .pill-btn:active, .pill-btn.pressed{ background:#232320; }
+  .speaker{
+    position:absolute; right:18px; bottom:20px;
+    display:grid; grid-template-columns:repeat(4,5px); gap:5px;
+    transform:rotate(-18deg);
+  }
+  .speaker i{ width:5px; height:5px; border-radius:50%; background:var(--shell-lo); display:block; }
+
+  /* ---- panel below device ---- */
+  .panel{
+    width:min(400px,92vw);
+    background:var(--card);
+    border:1px solid var(--card-line);
+    border-radius:14px;
+    padding:14px 16px;
+    display:flex; flex-direction:column; gap:10px;
+  }
+  .panel-row{ display:flex; gap:8px; flex-wrap:wrap; }
+  .btn{
+    flex:1;
+    padding:9px 10px; border-radius:9px; border:none;
+    background:var(--maroon); color:#fff;
+    font-size:.82rem; font-weight:600; cursor:pointer;
+    min-width:88px;
+    text-align:center;
+  }
+  .btn.secondary{ background:#3a3830; color:#e6e4d6; }
+  .btn:disabled{ opacity:.4; cursor:default; }
+  input[type=file]{ display:none; }
+  .status{ font-size:.76rem; color:var(--page-muted); line-height:1.5; }
+  .status b{ color:var(--page-text); }
+  .keys-help{
+    font-size:.72rem; color:var(--page-muted); line-height:1.6; border-top:1px solid var(--card-line); padding-top:10px;
+  }
+  .keys-help kbd{
+    background:var(--page-bg); border:1px solid var(--card-line); border-radius:4px;
+    padding:1px 6px; font-family:inherit; font-size:.72rem;
+  }
+  @media (prefers-reduced-motion: reduce){
+    * { transition:none !important; }
+  }
+</style>
+</head>
+<body>
+
+  <div class="masthead">
+    <h1>Watt Player</h1>
+    <span>a Game Boy emulator, right in your browser</span>
+  </div>
+
+  <div class="device">
+    <div class="device-top">
+      <div class="brand">Watt Player</div>
+      <div class="led-row"><span id="ledLabel">off</span><div class="led" id="powerLed"></div></div>
+    </div>
+
+    <div class="screen-bezel">
+      <div class="screen-frame">
+        <canvas id="screen" width="160" height="144"></canvas>
+      </div>
+      <div class="screen-caption">
+        <span>DOT MATRIX</span>
+        <span class="rom-title" id="romTitle">no cartridge</span>
+      </div>
+    </div>
+
+    <div class="controls">
+      <div class="dpad">
+        <div class="dpad-shape"></div>
+        <button class="up" data-key="up" aria-label="Up">▲</button>
+        <button class="down" data-key="down" aria-label="Down">▼</button>
+        <button class="left" data-key="left" aria-label="Left">◀</button>
+        <button class="right" data-key="right" aria-label="Right">▶</button>
+      </div>
+
+      <div></div>
+
+      <div class="ab-cluster">
+        <button class="ab-btn b-btn" data-key="b" aria-label="B">B</button>
+        <button class="ab-btn" data-key="a" aria-label="A">A</button>
+      </div>
+
+      <div class="meta-row">
+        <button class="pill-btn" data-key="select" aria-label="Select">SELECT</button>
+        <button class="pill-btn" data-key="start" aria-label="Start">START</button>
+      </div>
+    </div>
+
+    <div class="speaker">
+      <i></i><i></i><i></i><i></i>
+      <i></i><i></i><i></i><i></i>
+      <i></i><i></i><i></i><i></i>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-row">
+      <label class="btn" for="romInput">Load ROM</label>
+      <input type="file" id="romInput" accept=".gb,.gbc">
+      <button class="btn secondary" id="pauseBtn" disabled>Pause</button>
+      <button class="btn secondary" id="resetBtn" disabled>Reset</button>
+      <button class="btn secondary" id="muteBtn" disabled>Mute</button>
+    </div>
+    <div class="status" id="statusText">Load a <b>.gb</b> ROM file to start playing. Everything runs locally in your browser — nothing is uploaded.</div>
+    <div class="keys-help">
+      Keyboard: <kbd>&larr;&uarr;&darr;&rarr;</kbd> d-pad &nbsp; <kbd>Z</kbd> A &nbsp; <kbd>X</kbd> B &nbsp; <kbd>Enter</kbd> Start &nbsp; <kbd>Shift</kbd> Select
+    </div>
+  </div>
+
+<script>
+// ===================== Game Boy Emulator Core =====================
+// CPU (SM83), PPU, MMU, basic MBC0/1/3/5 support. No APU (audio) yet.
+
+// ---- Registers ----
+let A=0x01,F=0xB0,B=0x00,C=0x13,D=0x00,E=0xD8,H=0x01,L=0x4D,SP=0xFFFE,PC=0x0100;
+let IME=false, imeDelayCounter=0, halted=false;
+
+// ---- Memory ----
+let rom=new Uint8Array(0x8000);
+let cartRam=new Uint8Array(0);
+let vram=new Uint8Array(0x2000);
+let wram=new Uint8Array(0x2000);
+let oam=new Uint8Array(0xA0);
+let hram=new Uint8Array(0x7F);
+let io=new Uint8Array(0x80);
+let IE=0x00;
+
+let mbcType=0, romBank=1, ramBank=0, ramEnabled=false, bankMode=0, totalRomBanks=2;
+let divCounter=0, timerCounter=0;
+let ppuDots=0, windowLineCounter=-1;
+let romLoaded=false, running=false;
+
+let keys={up:false,down:false,left:false,right:false,a:false,b:false,start:false,select:false};
+
+// ---- APU trigger flags (consumed by the audio engine) ----
+let ch1TriggerPending=false, ch2TriggerPending=false, ch3TriggerPending=false, ch4TriggerPending=false;
+
+// ---- Framebuffer ----
+const frameData = new Uint8ClampedArray(160*144*4);
+const SHADES=[[224,248,208],[136,192,112],[52,104,86],[8,24,32]];
+let onFrame=null; // callback(frameData) set by UI
+
+function setPixel(x,y,shade){
+  const idx=(y*160+x)*4;
+  const c=SHADES[shade];
+  frameData[idx]=c[0]; frameData[idx+1]=c[1]; frameData[idx+2]=c[2]; frameData[idx+3]=255;
+}
+
+// ---- Flag helpers ----
+function setZ(b){F = b ? (F|0x80) : (F&0x7F);}
+function setN(b){F = b ? (F|0x40) : (F&0xBF);}
+function setH(b){F = b ? (F|0x20) : (F&0xDF);}
+function setC(b){F = b ? (F|0x10) : (F&0xEF);}
+function fZ(){return (F&0x80)?1:0;}
+function fN(){return (F&0x40)?1:0;}
+function fH(){return (F&0x20)?1:0;}
+function fC(){return (F&0x10)?1:0;}
+function toSigned8(v){return v>127? v-256: v;}
+
+// ---- Register helpers ----
+function getReg8(i){
+  switch(i){
+    case 0:return B; case 1:return C; case 2:return D; case 3:return E;
+    case 4:return H; case 5:return L; case 6:return read8((H<<8)|L); case 7:return A;
+  }
+}
+function setReg8(i,v){
+  v&=0xFF;
+  switch(i){
+    case 0:B=v;break; case 1:C=v;break; case 2:D=v;break; case 3:E=v;break;
+    case 4:H=v;break; case 5:L=v;break; case 6:write8((H<<8)|L,v);break; case 7:A=v;break;
+  }
+}
+function getRP(n){
+  switch(n){case 0:return (B<<8)|C; case 1:return (D<<8)|E; case 2:return (H<<8)|L; case 3:return SP;}
+}
+function setRP(n,v){
+  v&=0xFFFF;
+  switch(n){
+    case 0:B=v>>8;C=v&0xFF;break;
+    case 1:D=v>>8;E=v&0xFF;break;
+    case 2:H=v>>8;L=v&0xFF;break;
+    case 3:SP=v;break;
+  }
+}
+function getRP2(n){
+  switch(n){case 0:return (B<<8)|C; case 1:return (D<<8)|E; case 2:return (H<<8)|L; case 3:return (A<<8)|F;}
+}
+function setRP2(n,v){
+  v&=0xFFFF;
+  switch(n){
+    case 0:B=v>>8;C=v&0xFF;break;
+    case 1:D=v>>8;E=v&0xFF;break;
+    case 2:H=v>>8;L=v&0xFF;break;
+    case 3:A=v>>8;F=v&0xF0;break;
+  }
+}
+function testCC(cc){
+  switch(cc){case 0:return !fZ(); case 1:return !!fZ(); case 2:return !fC(); case 3:return !!fC();}
+}
+function push16(v){ SP=(SP-1)&0xFFFF; write8(SP,(v>>8)&0xFF); SP=(SP-1)&0xFFFF; write8(SP,v&0xFF); }
+function pop16(){ let lo=read8(SP); SP=(SP+1)&0xFFFF; let hi=read8(SP); SP=(SP+1)&0xFFFF; return (hi<<8)|lo; }
+function read16(addr){ return read8(addr) | (read8((addr+1)&0xFFFF)<<8); }
+
+// ---- Memory bus ----
+function read8(addr){
+  addr&=0xFFFF;
+  if(addr<0x4000) return rom[addr]!==undefined? rom[addr]:0xFF;
+  if(addr<0x8000){ let off=romBank*0x4000+(addr-0x4000); return off<rom.length? rom[off]:0xFF; }
+  if(addr<0xA000) return vram[addr-0x8000];
+  if(addr<0xC000){
+    if(ramEnabled && cartRam.length) return cartRam[(ramBank*0x2000+(addr-0xA000))%cartRam.length];
+    return 0xFF;
+  }
+  if(addr<0xE000) return wram[addr-0xC000];
+  if(addr<0xFE00) return wram[addr-0xE000];
+  if(addr<0xFEA0) return oam[addr-0xFE00];
+  if(addr<0xFF00) return 0xFF;
+  if(addr<0xFF80){
+    if(addr===0xFF00) return readJoypad();
+    return io[addr-0xFF00];
+  }
+  if(addr<0xFFFF) return hram[addr-0xFF80];
+  return IE;
+}
+function write8(addr,val){
+  addr&=0xFFFF; val&=0xFF;
+  if(addr<0x8000){ mbcWrite(addr,val); return; }
+  if(addr<0xA000){ vram[addr-0x8000]=val; return; }
+  if(addr<0xC000){ if(ramEnabled && cartRam.length) cartRam[(ramBank*0x2000+(addr-0xA000))%cartRam.length]=val; return; }
+  if(addr<0xE000){ wram[addr-0xC000]=val; return; }
+  if(addr<0xFE00){ wram[addr-0xE000]=val; return; }
+  if(addr<0xFEA0){ oam[addr-0xFE00]=val; return; }
+  if(addr<0xFF00) return;
+  if(addr<0xFF80){
+    if(addr===0xFF00){ io[0]=(io[0]&0xCF)|(val&0x30); return; }
+    if(addr===0xFF04){ io[4]=0; divCounter=0; return; }
+    if(addr===0xFF44) return;
+    if(addr===0xFF41){ io[0x41]=(io[0x41]&0x07)|(val&0xF8); return; }
+    if(addr===0xFF46){ dmaTransfer(val); io[0x46]=val; return; }
+    if(addr===0xFF14){ io[0x14]=val; if(val&0x80) ch1TriggerPending=true; return; }
+    if(addr===0xFF19){ io[0x19]=val; if(val&0x80) ch2TriggerPending=true; return; }
+    if(addr===0xFF1E){ io[0x1E]=val; if(val&0x80) ch3TriggerPending=true; return; }
+    if(addr===0xFF23){ io[0x23]=val; if(val&0x80) ch4TriggerPending=true; return; }
+    io[addr-0xFF00]=val; return;
+  }
+  if(addr<0xFFFF){ hram[addr-0xFF80]=val; return; }
+  IE=val;
+}
+function dmaTransfer(val){
+  const src=(val&0xFF)<<8;
+  for(let i=0;i<0xA0;i++) oam[i]=read8((src+i)&0xFFFF);
+}
+
+// ---- Joypad ----
+function readJoypad(){
+  const sel=io[0];
+  let lower=0x0F;
+  if(!(sel&0x10)) lower &= ~((keys.right?1:0)|(keys.left?2:0)|(keys.up?4:0)|(keys.down?8:0));
+  if(!(sel&0x20)) lower &= ~((keys.a?1:0)|(keys.b?2:0)|(keys.select?4:0)|(keys.start?8:0));
+  return 0xC0 | (sel&0x30) | (lower&0x0F);
+}
+function requestJoypadIfNeeded(){
+  requestInterrupt(4);
+}
+
+// ---- MBC ----
+function classifyMbc(code){
+  if(code===0x00||code===0x08||code===0x09) return 0;
+  if(code>=0x01 && code<=0x03) return 1;
+  if(code===0x05||code===0x06) return 2;
+  if(code>=0x0F && code<=0x13) return 3;
+  if(code>=0x19 && code<=0x1E) return 5;
+  return 1;
+}
+function mbcWrite(addr,val){
+  if(mbcType===0) return;
+  if(mbcType===1||mbcType===2){
+    if(addr<0x2000) ramEnabled=(val&0x0F)===0x0A;
+    else if(addr<0x4000){ let n=val&0x1F; if(n===0)n=1; romBank=(romBank&0x60)|n; }
+    else if(addr<0x6000){ if(bankMode===0) romBank=(romBank&0x1F)|((val&0x03)<<5); else ramBank=val&0x03; }
+    else bankMode=val&0x01;
+  } else if(mbcType===3){
+    if(addr<0x2000) ramEnabled=(val&0x0F)===0x0A;
+    else if(addr<0x4000){ let n=val&0x7F; if(n===0)n=1; romBank=n; }
+    else if(addr<0x6000) ramBank=val&0x0F;
+  } else if(mbcType===5){
+    if(addr<0x2000) ramEnabled=(val&0x0F)===0x0A;
+    else if(addr<0x3000) romBank=(romBank&0x100)|val;
+    else if(addr<0x4000) romBank=(romBank&0xFF)|((val&1)<<8);
+    else if(addr<0x6000) ramBank=val&0x0F;
+  }
+}
+
+// ---- Timer ----
+function requestInterrupt(bit){ io[0x0F] |= (1<<bit); }
+function updateTimer(cycles){
+  divCounter+=cycles;
+  while(divCounter>=256){ divCounter-=256; io[4]=(io[4]+1)&0xFF; }
+  const tac=io[7];
+  if(tac&0x04){
+    timerCounter+=cycles;
+    const freqTable=[1024,16,64,256];
+    const freq=freqTable[tac&3];
+    while(timerCounter>=freq){
+      timerCounter-=freq;
+      let tima=io[5]+1;
+      if(tima>0xFF){ io[5]=io[6]; requestInterrupt(2); } else { io[5]=tima; }
+    }
+  }
+}
+
+// ---- DAA ----
+function DAA(){
+  let a=A, adjust=0, carry=fC();
+  if(fN()){
+    if(fH()) adjust|=0x06;
+    if(carry) adjust|=0x60;
+    a=(a-adjust)&0xFF;
+  } else {
+    if(fH() || (a&0x0F)>9) adjust|=0x06;
+    if(carry || a>0x99){ adjust|=0x60; carry=1; }
+    a=(a+adjust)&0xFF;
+  }
+  A=a;
+  setZ(A===0); setH(0); setC(carry);
+}
+
+// ---- ALU ----
+function aluOp(idx,val){
+  switch(idx){
+    case 0:{ let r=A+val; setH(((A&0xF)+(val&0xF))>0xF); setC(r>0xFF); A=r&0xFF; setZ(A===0); setN(0); break; }
+    case 1:{ let cy=fC(); let r=A+val+cy; setH(((A&0xF)+(val&0xF)+cy)>0xF); setC(r>0xFF); A=r&0xFF; setZ(A===0); setN(0); break; }
+    case 2:{ setH((A&0xF)<(val&0xF)); setC(A<val); A=(A-val)&0xFF; setZ(A===0); setN(1); break; }
+    case 3:{ let cy=fC(); setH((A&0xF)<((val&0xF)+cy)); setC(A<(val+cy)); A=(A-val-cy)&0xFF; setZ(A===0); setN(1); break; }
+    case 4:{ A=A&val; setZ(A===0); setN(0); setH(1); setC(0); break; }
+    case 5:{ A=A^val; setZ(A===0); setN(0); setH(0); setC(0); break; }
+    case 6:{ A=A|val; setZ(A===0); setN(0); setH(0); setC(0); break; }
+    case 7:{ setH((A&0xF)<(val&0xF)); setC(A<val); setZ(((A-val)&0xFF)===0); setN(1); break; }
+  }
+}
+function rotateShift(grp,val){
+  let carry;
+  switch(grp){
+    case 0: carry=(val>>7)&1; return {result:((val<<1)|carry)&0xFF, carry};
+    case 1: carry=val&1; return {result:((val>>1)|(carry<<7))&0xFF, carry};
+    case 2: { let old=fC(); carry=(val>>7)&1; return {result:((val<<1)|old)&0xFF, carry}; }
+    case 3: { let old=fC(); carry=val&1; return {result:((val>>1)|(old<<7))&0xFF, carry}; }
+    case 4: carry=(val>>7)&1; return {result:(val<<1)&0xFF, carry};
+    case 5: carry=val&1; return {result:((val>>1)|(val&0x80))&0xFF, carry};
+    case 6: return {result:((val<<4)|(val>>4))&0xFF, carry:0};
+    case 7: carry=val&1; return {result:(val>>1)&0xFF, carry};
+  }
+}
+
+// ---- CPU execute ----
+function executeCB(){
+  const op=read8(PC); PC=(PC+1)&0xFFFF;
+  const r=op&7;
+  const val=getReg8(r);
+  if((op&0xC0)===0x00){
+    const grp=(op>>3)&7;
+    const res=rotateShift(grp,val);
+    setReg8(r,res.result);
+    setZ(res.result===0); setN(0); setH(0); setC(res.carry);
+    return r===6?16:8;
+  } else if((op&0xC0)===0x40){
+    const b=(op>>3)&7;
+    setZ(((val>>b)&1)===0); setN(0); setH(1);
+    return r===6?12:8;
+  } else if((op&0xC0)===0x80){
+    const b=(op>>3)&7;
+    setReg8(r, val & (~(1<<b)) & 0xFF);
+    return r===6?16:8;
+  } else {
+    const b=(op>>3)&7;
+    setReg8(r, (val | (1<<b))&0xFF);
+    return r===6?16:8;
+  }
+}
+
+function execute(opcode){
+  if(opcode===0xCB) return executeCB();
+
+  if((opcode&0xC0)===0x40){
+    if(opcode===0x76){ halted=true; return 4; }
+    const dst=(opcode>>3)&7, src=opcode&7;
+    setReg8(dst, getReg8(src));
+    return (dst===6||src===6)?8:4;
+  }
+  if((opcode&0xC0)===0x80){
+    const idx=(opcode>>3)&7, src=opcode&7;
+    aluOp(idx, getReg8(src));
+    return src===6?8:4;
+  }
+  if((opcode&0xC7)===0x04){
+    const r=(opcode>>3)&7;
+    const v=getReg8(r); const res=(v+1)&0xFF;
+    setZ(res===0); setN(0); setH((v&0xF)===0xF);
+    setReg8(r,res);
+    return r===6?12:4;
+  }
+  if((opcode&0xC7)===0x05){
+    const r=(opcode>>3)&7;
+    const v=getReg8(r); const res=(v-1)&0xFF;
+    setZ(res===0); setN(1); setH((v&0xF)===0);
+    setReg8(r,res);
+    return r===6?12:4;
+  }
+  if((opcode&0xC7)===0x06){
+    const r=(opcode>>3)&7;
+    const n=read8(PC); PC=(PC+1)&0xFFFF;
+    setReg8(r,n);
+    return r===6?12:8;
+  }
+  if((opcode&0xCF)===0x01){
+    const rp=(opcode>>4)&3;
+    const nn=read16(PC); PC=(PC+2)&0xFFFF;
+    setRP(rp,nn);
+    return 12;
+  }
+  if((opcode&0xCF)===0x03){
+    const rp=(opcode>>4)&3;
+    setRP(rp,(getRP(rp)+1)&0xFFFF);
+    return 8;
+  }
+  if((opcode&0xCF)===0x0B){
+    const rp=(opcode>>4)&3;
+    setRP(rp,(getRP(rp)-1)&0xFFFF);
+    return 8;
+  }
+  if((opcode&0xCF)===0x09){
+    const rp=(opcode>>4)&3;
+    const hl=getRP(2); const val=getRP(rp);
+    const res=hl+val;
+    setN(0); setH(((hl&0xFFF)+(val&0xFFF))>0xFFF); setC(res>0xFFFF);
+    setRP(2,res&0xFFFF);
+    return 8;
+  }
+  if((opcode&0xE7)===0x20){
+    const cc=(opcode>>3)&3;
+    const n=toSigned8(read8(PC)); PC=(PC+1)&0xFFFF;
+    if(testCC(cc)){ PC=(PC+n)&0xFFFF; return 12; }
+    return 8;
+  }
+  if((opcode&0xE7)===0xC0){
+    const cc=(opcode>>3)&3;
+    if(testCC(cc)){ PC=pop16(); return 20; }
+    return 8;
+  }
+  if((opcode&0xCF)===0xC1){
+    const rp2=(opcode>>4)&3;
+    setRP2(rp2,pop16());
+    return 12;
+  }
+  if((opcode&0xE7)===0xC2){
+    const cc=(opcode>>3)&3;
+    const nn=read16(PC); PC=(PC+2)&0xFFFF;
+    if(testCC(cc)){ PC=nn; return 16; }
+    return 12;
+  }
+  if((opcode&0xE7)===0xC4){
+    const cc=(opcode>>3)&3;
+    const nn=read16(PC); PC=(PC+2)&0xFFFF;
+    if(testCC(cc)){ push16(PC); PC=nn; return 24; }
+    return 12;
+  }
+  if((opcode&0xCF)===0xC5){
+    const rp2=(opcode>>4)&3;
+    push16(getRP2(rp2));
+    return 16;
+  }
+  if((opcode&0xC7)===0xC6){
+    const idx=(opcode>>3)&7;
+    const n=read8(PC); PC=(PC+1)&0xFFFF;
+    aluOp(idx,n);
+    return 8;
+  }
+  if((opcode&0xC7)===0xC7){
+    const addr=opcode&0x38;
+    push16(PC); PC=addr;
+    return 16;
+  }
+
+  switch(opcode){
+    case 0x00: return 4;
+    case 0x02: write8(getRP(0),A); return 8;
+    case 0x12: write8(getRP(1),A); return 8;
+    case 0x22: { const hl=getRP(2); write8(hl,A); setRP(2,(hl+1)&0xFFFF); return 8; }
+    case 0x32: { const hl=getRP(2); write8(hl,A); setRP(2,(hl-1)&0xFFFF); return 8; }
+    case 0x0A: A=read8(getRP(0)); return 8;
+    case 0x1A: A=read8(getRP(1)); return 8;
+    case 0x2A: { const hl=getRP(2); A=read8(hl); setRP(2,(hl+1)&0xFFFF); return 8; }
+    case 0x3A: { const hl=getRP(2); A=read8(hl); setRP(2,(hl-1)&0xFFFF); return 8; }
+    case 0x07: { const c=(A>>7)&1; A=((A<<1)|c)&0xFF; setZ(0);setN(0);setH(0);setC(c); return 4; }
+    case 0x0F: { const c=A&1; A=((A>>1)|(c<<7))&0xFF; setZ(0);setN(0);setH(0);setC(c); return 4; }
+    case 0x17: { const old=fC(); const c=(A>>7)&1; A=((A<<1)|old)&0xFF; setZ(0);setN(0);setH(0);setC(c); return 4; }
+    case 0x1F: { const old=fC(); const c=A&1; A=((A>>1)|(old<<7))&0xFF; setZ(0);setN(0);setH(0);setC(c); return 4; }
+    case 0x27: DAA(); return 4;
+    case 0x2F: A=(~A)&0xFF; setN(1); setH(1); return 4;
+    case 0x37: setN(0); setH(0); setC(1); return 4;
+    case 0x3F: setN(0); setH(0); setC(fC()?0:1); return 4;
+    case 0x08: { const nn=read16(PC); PC=(PC+2)&0xFFFF; write8(nn,SP&0xFF); write8((nn+1)&0xFFFF,(SP>>8)&0xFF); return 20; }
+    case 0x10: PC=(PC+1)&0xFFFF; return 4;
+    case 0x18: { const n=toSigned8(read8(PC)); PC=(PC+1)&0xFFFF; PC=(PC+n)&0xFFFF; return 12; }
+    case 0xC3: { PC=read16(PC); return 16; }
+    case 0xC9: PC=pop16(); return 16;
+    case 0xD9: PC=pop16(); IME=true; return 16;
+    case 0xCD: { const nn=read16(PC); PC=(PC+2)&0xFFFF; push16(PC); PC=nn; return 24; }
+    case 0xE0: { const n=read8(PC); PC=(PC+1)&0xFFFF; write8(0xFF00+n,A); return 12; }
+    case 0xE2: write8(0xFF00+C,A); return 8;
+    case 0xE8: { const n=toSigned8(read8(PC)); PC=(PC+1)&0xFFFF; const r=(SP+n)&0xFFFF; setZ(0);setN(0); setH(((SP&0xF)+(n&0xF))>0xF?1:0); setC(((SP&0xFF)+(n&0xFF))>0xFF?1:0); SP=r; return 16; }
+    case 0xE9: PC=getRP(2); return 4;
+    case 0xEA: { const nn=read16(PC); PC=(PC+2)&0xFFFF; write8(nn,A); return 16; }
+    case 0xF0: { const n=read8(PC); PC=(PC+1)&0xFFFF; A=read8(0xFF00+n); return 12; }
+    case 0xF2: A=read8(0xFF00+C); return 8;
+    case 0xF3: IME=false; imeDelayCounter=0; return 4;
+    case 0xF8: { const n=toSigned8(read8(PC)); PC=(PC+1)&0xFFFF; const r=(SP+n)&0xFFFF; setZ(0);setN(0); setH(((SP&0xF)+(n&0xF))>0xF?1:0); setC(((SP&0xFF)+(n&0xFF))>0xFF?1:0); setRP(2,r); return 12; }
+    case 0xF9: SP=getRP(2); return 8;
+    case 0xFA: { const nn=read16(PC); PC=(PC+2)&0xFFFF; A=read8(nn); return 16; }
+    case 0xFB: imeDelayCounter=2; return 4;
+    default: return 4;
+  }
+}
+
+// ---- Interrupts ----
+function handleInterrupts(){
+  const pending = io[0x0F] & IE & 0x1F;
+  if(!IME){
+    if(halted && pending) halted=false;
+    return 0;
+  }
+  if(!pending) return 0;
+  halted=false; IME=false;
+  for(let i=0;i<5;i++){
+    if(pending & (1<<i)){
+      io[0x0F] &= ~(1<<i);
+      push16(PC);
+      PC=[0x40,0x48,0x50,0x58,0x60][i];
+      return 20;
+    }
+  }
+  return 0;
+}
+
+function step(){
+  if(imeDelayCounter>0){ imeDelayCounter--; if(imeDelayCounter===0) IME=true; }
+  const intCycles=handleInterrupts();
+  if(intCycles){ updateTimer(intCycles); return intCycles; }
+  if(halted){ updateTimer(4); return 4; }
+  const opcode=read8(PC); PC=(PC+1)&0xFFFF;
+  const cycles=execute(opcode);
+  updateTimer(cycles);
+  return cycles;
+}
+
+// ---- PPU ----
+function getTileColor(tileMapBase,tx,ty,fineY,fineX,unsignedTiles){
+  const tileIndexAddr = tileMapBase + ty*32 + tx;
+  const tileIndex = vram[tileIndexAddr-0x8000];
+  let tileAddr;
+  if(unsignedTiles) tileAddr = 0x8000 + tileIndex*16;
+  else tileAddr = 0x9000 + toSigned8(tileIndex)*16;
+  const b1=vram[(tileAddr + fineY*2) - 0x8000];
+  const b2=vram[(tileAddr + fineY*2 + 1) - 0x8000];
+  const bit=7-fineX;
+  return ((b2>>bit)&1)<<1 | ((b1>>bit)&1);
+}
+
+function renderScanline(ly){
+  const lcdc=io[0x40];
+  if(!(lcdc&0x80)) return;
+  const bgPalette=io[0x47], obp0=io[0x48], obp1=io[0x49];
+  const scx=io[0x43], scy=io[0x42], wy=io[0x4A], wx=io[0x4B];
+  const bgEnable=lcdc&0x01;
+  const winEnable=(lcdc&0x20) && (ly>=wy) && (wx<=166);
+  const bgTileMap=(lcdc&0x08)?0x9C00:0x9800;
+  const winTileMap=(lcdc&0x40)?0x9C00:0x9800;
+  const unsignedTiles=lcdc&0x10;
+  const bgColorIdx = new Uint8Array(160);
+
+  if(winEnable) windowLineCounter++;
+
+  for(let x=0;x<160;x++){
+    let colorNum=0;
+    const useWindow = winEnable && (x>=wx-7);
+    if(useWindow){
+      const relX=x-(wx-7);
+      const tx=(relX>>3)&31, ty=(windowLineCounter>>3)&31, fineY=windowLineCounter&7, fineX=relX&7;
+      colorNum=getTileColor(winTileMap,tx,ty,fineY,fineX,unsignedTiles);
+    } else if(bgEnable){
+      const bx=(scx+x)&0xFF, by=(scy+ly)&0xFF;
+      const tx=(bx>>3)&31, ty=(by>>3)&31, fineY=by&7, fineX=bx&7;
+      colorNum=getTileColor(bgTileMap,tx,ty,fineY,fineX,unsignedTiles);
+    }
+    bgColorIdx[x]=colorNum;
+    const shade=(bgPalette>>(colorNum*2))&3;
+    setPixel(x,ly,shade);
+  }
+
+  if(lcdc&0x02){
+    const spriteHeight=(lcdc&0x04)?16:8;
+    const sprites=[];
+    for(let i=0;i<40;i++){
+      const base=i*4;
+      const sy=oam[base]-16, sx=oam[base+1]-8, tile=oam[base+2], attr=oam[base+3];
+      if(ly>=sy && ly<sy+spriteHeight){ sprites.push({sx,sy,tile,attr,idx:i}); if(sprites.length>=10) break; }
+    }
+    sprites.sort((a,b)=> (a.sx-b.sx) || (a.idx-b.idx));
+    const spriteDrawn=new Uint8Array(160);
+    for(const s of sprites){
+      const paletteReg = (s.attr&0x10)?obp1:obp0;
+      const xFlip=s.attr&0x20, yFlip=s.attr&0x40, behindBG=s.attr&0x80;
+      let tileNum=s.tile;
+      if(spriteHeight===16) tileNum &= 0xFE;
+      let line = ly - s.sy;
+      if(yFlip) line = spriteHeight-1-line;
+      const tileAddr = 0x8000 + tileNum*16 + line*2;
+      const b1=vram[tileAddr-0x8000], b2=vram[tileAddr+1-0x8000];
+      for(let px=0;px<8;px++){
+        const sxPix = s.sx+px;
+        if(sxPix<0||sxPix>=160) continue;
+        if(spriteDrawn[sxPix]) continue;
+        const bit = xFlip? px : (7-px);
+        const colorNum=((b2>>bit)&1)<<1 | ((b1>>bit)&1);
+        if(colorNum===0) continue;
+        if(behindBG && bgColorIdx[sxPix]!==0) continue;
+        const shade=(paletteReg>>(colorNum*2))&3;
+        setPixel(sxPix,ly,shade);
+        spriteDrawn[sxPix]=1;
+      }
+    }
+  }
+}
+
+function checkLYC(){
+  const ly=io[0x44], lyc=io[0x45];
+  if(ly===lyc){ io[0x41]|=0x04; if(io[0x41]&0x40) requestInterrupt(1); }
+  else { io[0x41]&=~0x04; }
+}
+
+function ppuStep(cycles){
+  const lcdc=io[0x40];
+  if(!(lcdc&0x80)){
+    ppuDots=0; io[0x44]=0; io[0x41]=(io[0x41]&0xFC); windowLineCounter=-1;
+    return;
+  }
+  ppuDots+=cycles;
+  let mode = io[0x41]&0x3;
+  let ly = io[0x44];
+  if(mode===2){
+    if(ppuDots>=80){ ppuDots-=80; io[0x41]=(io[0x41]&0xFC)|3; }
+  } else if(mode===3){
+    if(ppuDots>=172){
+      ppuDots-=172; renderScanline(ly); io[0x41]=(io[0x41]&0xFC)|0;
+      if(io[0x41]&0x08) requestInterrupt(1);
+    }
+  } else if(mode===0){
+    if(ppuDots>=204){
+      ppuDots-=204; ly++; io[0x44]=ly;
+      checkLYC();
+      if(ly===144){
+        io[0x41]=(io[0x41]&0xFC)|1; requestInterrupt(0);
+        if(io[0x41]&0x10) requestInterrupt(1);
+        if(onFrame) onFrame(frameData);
+        windowLineCounter=-1;
+      } else {
+        io[0x41]=(io[0x41]&0xFC)|2;
+        if(io[0x41]&0x20) requestInterrupt(1);
+      }
+    }
+  } else if(mode===1){
+    if(ppuDots>=456){
+      ppuDots-=456; ly++;
+      if(ly>153){ ly=0; io[0x44]=ly; io[0x41]=(io[0x41]&0xFC)|2; if(io[0x41]&0x20) requestInterrupt(1); windowLineCounter=-1; }
+      else { io[0x44]=ly; }
+      checkLYC();
+    }
+  }
+}
+
+// ---- Reset / ROM loading ----
+function resetCpu(){
+  A=0x01;F=0xB0;B=0x00;C=0x13;D=0x00;E=0xD8;H=0x01;L=0x4D;SP=0xFFFE;PC=0x0100;
+  IME=false; imeDelayCounter=0; halted=false;
+  io=new Uint8Array(0x80);
+  io[0x00]=0xCF; io[0x02]=0x7E; io[0x04]=0xAB; io[0x07]=0xF8; io[0x0F]=0xE1;
+  io[0x10]=0x80;io[0x11]=0xBF;io[0x12]=0xF3;io[0x14]=0xBF;io[0x16]=0x3F;io[0x19]=0xBF;
+  io[0x1A]=0x7F;io[0x1B]=0xFF;io[0x1C]=0x9F;io[0x1E]=0xBF;io[0x20]=0xFF;io[0x23]=0xBF;
+  io[0x24]=0x77;io[0x25]=0xF3;io[0x26]=0xF1;
+  io[0x40]=0x91; io[0x41]=0x85; io[0x42]=0x00; io[0x43]=0x00; io[0x45]=0x00;
+  io[0x47]=0xFC; io[0x48]=0xFF; io[0x49]=0xFF; io[0x4A]=0x00; io[0x4B]=0x00;
+  io[0x44]=0x00;
+  vram=new Uint8Array(0x2000); wram=new Uint8Array(0x2000); oam=new Uint8Array(0xA0); hram=new Uint8Array(0x7F);
+  IE=0x00;
+  divCounter=0; timerCounter=0;
+}
+function resetPpu(){ ppuDots=0; windowLineCounter=-1; }
+
+function getRomTitle(){
+  let s='';
+  for(let i=0x134;i<0x144;i++){
+    const c=rom[i];
+    if(c===0) break;
+    if(c>=32 && c<127) s+=String.fromCharCode(c);
+  }
+  return s.trim();
+}
+
+function loadRom(buffer){
+  rom=new Uint8Array(buffer);
+  const cartType=rom[0x147];
+  const romSizeCode=rom[0x148];
+  const ramSizeCode=rom[0x149];
+  totalRomBanks = 2 << romSizeCode;
+  mbcType = classifyMbc(cartType);
+  const ramSizes=[0,2*1024,8*1024,32*1024,128*1024,64*1024];
+  let ramBytes = ramSizes[ramSizeCode]||0;
+  if(mbcType===2) ramBytes=512;
+  cartRam=new Uint8Array(ramBytes);
+  romBank=1; ramBank=0; ramEnabled=false; bankMode=0;
+  resetCpu();
+  resetPpu();
+  romLoaded=true;
+  return getRomTitle();
+}
+
+const CYCLES_PER_FRAME=70224;
+function runFrame(){
+  let total=0;
+  let guard=0;
+  while(total<CYCLES_PER_FRAME && guard<200000){
+    const c=step();
+    ppuStep(c);
+    total+=c;
+    guard++;
+  }
+}
+
+if(typeof module!=='undefined') module.exports={loadRom, runFrame, keys, step, ppuStep, frameData};
+
+// ===================== APU (audio) engine =====================
+// Reads the live sound registers (io[0x10..0x3F]) each sample and
+// synthesizes the four Game Boy channels: two squares, wave, noise.
+
+let audioCtx = null, scriptNode = null, audioEnabled = false;
+
+const DUTY_TABLE = [0.125, 0.25, 0.5, 0.75];
+const NOISE_DIVISOR = [8,16,32,48,64,80,96,112];
+
+const ch1 = { phase:0, envVol:0, envTimer:0, length:0, enabled:false, sweepTimer:0, sweepFreq:0 };
+const ch2 = { phase:0, envVol:0, envTimer:0, length:0, enabled:false };
+const ch3 = { phase:0, length:0, enabled:false };
+const ch4 = { lfsr:0x7FFF, accum:0, envVol:0, envTimer:0, length:0, enabled:false };
+
+let seqAccum=0; // real-time accumulator driving the 256/128/64 Hz clocks
+
+function triggerCh1(){
+  ch1.enabled = true;
+  ch1.phase = 0;
+  ch1.envVol = (io[0x12]>>4)&0xF;
+  ch1.envTimer = io[0x12]&0x7;
+  const len = io[0x11]&0x3F;
+  ch1.length = 64-len;
+  ch1.sweepFreq = io[0x13] | ((io[0x14]&0x7)<<8);
+  ch1.sweepTimer = (io[0x10]>>4)&0x7;
+}
+function triggerCh2(){
+  ch2.enabled = true;
+  ch2.phase = 0;
+  ch2.envVol = (io[0x17]>>4)&0xF;
+  ch2.envTimer = io[0x17]&0x7;
+  const len = io[0x16]&0x3F;
+  ch2.length = 64-len;
+}
+function triggerCh3(){
+  ch3.enabled = true;
+  ch3.phase = 0;
+  const len = io[0x1B];
+  ch3.length = 256-len;
+}
+function triggerCh4(){
+  ch4.enabled = true;
+  ch4.lfsr = 0x7FFF;
+  ch4.accum = 0;
+  ch4.envVol = (io[0x21]>>4)&0xF;
+  ch4.envTimer = io[0x21]&0x7;
+  const len = io[0x41]&0x3F;
+  ch4.length = 64-len;
+}
+
+function stepFrameSequencer(dt){
+  seqAccum += dt;
+  const step = 1/256; // drive length at 256Hz; derive 128/64 from it
+  while(seqAccum >= step){
+    seqAccum -= step;
+    frameTick++;
+    // length counters, every 256Hz tick
+    clockLength(ch1, io[0x14]);
+    clockLength(ch2, io[0x19]);
+    clockLength(ch3, io[0x1E], true);
+    clockLength(ch4, io[0x23]);
+    // sweep at 128Hz (every other length tick)
+    if(frameTick % 2 === 0) clockSweep();
+    // envelope at 64Hz (every 4th length tick)
+    if(frameTick % 4 === 0){ clockEnvelope(ch1, io[0x12]); clockEnvelope(ch2, io[0x17]); clockEnvelope(ch4, io[0x21]); }
+  }
+}
+let frameTick=0;
+
+function clockLength(ch, nrX4, isWave){
+  if(!(nrX4 & 0x40)) return; // length-enable bit
+  if(ch.length>0){
+    ch.length--;
+    if(ch.length===0) ch.enabled=false;
+  }
+}
+function clockEnvelope(ch, nrX2){
+  const period = nrX2 & 0x7;
+  if(period===0) return;
+  if(ch.envTimer>0){
+    ch.envTimer--;
+    if(ch.envTimer===0){
+      ch.envTimer = period;
+      const dir = (nrX2&0x8)?1:-1;
+      const nv = ch.envVol + dir;
+      if(nv>=0 && nv<=15) ch.envVol = nv;
+    }
+  }
+}
+function clockSweep(){
+  const period = (io[0x10]>>4)&0x7;
+  const shift = io[0x10]&0x7;
+  const negate = io[0x10]&0x8;
+  if(!ch1.enabled) return;
+  if(ch1.sweepTimer>0){
+    ch1.sweepTimer--;
+    if(ch1.sweepTimer===0){
+      ch1.sweepTimer = period===0?8:period;
+      if(period>0){
+        let delta = ch1.sweepFreq >> shift;
+        let newFreq = negate ? ch1.sweepFreq - delta : ch1.sweepFreq + delta;
+        if(newFreq>2047){ ch1.enabled=false; }
+        else if(shift>0){
+          ch1.sweepFreq = newFreq;
+          io[0x13] = newFreq & 0xFF;
+          io[0x14] = (io[0x14]&0xF8) | ((newFreq>>8)&0x7);
+        }
+      }
+    }
+  }
+}
+
+function squareSample(freqReg, dutyBits, ch, dt){
+  if(freqReg>=2048) return 0;
+  const freq = 131072 / (2048-freqReg);
+  ch.phase += freq*dt;
+  ch.phase -= Math.floor(ch.phase);
+  return ch.phase < DUTY_TABLE[dutyBits] ? 1 : -1;
+}
+function waveSample(freqReg, dt){
+  if(freqReg>=2048) return 0;
+  const freq = 65536/(2048-freqReg);
+  ch3.phase += freq*32*dt;
+  ch3.phase -= Math.floor(ch3.phase/32)*32;
+  const idx = Math.floor(ch3.phase) & 31;
+  const byte = io[0x30 + (idx>>1)];
+  const nibble = (idx%2===0) ? (byte>>4)&0xF : byte&0xF;
+  return (nibble-8)/8;
+}
+function noiseSample(dt){
+  const shiftCode = (io[0x22]>>4)&0xF;
+  const width7 = io[0x22]&0x8;
+  const divCode = io[0x22]&0x7;
+  const freq = 524288 / NOISE_DIVISOR[divCode] / Math.pow(2, shiftCode+1);
+  if(freq<=0 || !isFinite(freq)) return 0;
+  const period = 1/freq;
+  ch4.accum += dt;
+  while(ch4.accum >= period){
+    ch4.accum -= period;
+    const xorBit = (ch4.lfsr&1) ^ ((ch4.lfsr>>1)&1);
+    ch4.lfsr = (ch4.lfsr>>1) | (xorBit<<14);
+    if(width7) ch4.lfsr = (ch4.lfsr & ~0x40) | (xorBit<<6);
+  }
+  return (ch4.lfsr&1) ? -1 : 1;
+}
+
+function audioProcess(e){
+  const outL = e.outputBuffer.getChannelData(0);
+  const outR = e.outputBuffer.getChannelData(1);
+  const dt = 1/audioCtx.sampleRate;
+  const n = outL.length;
+
+  const powerOn = io[0x26] & 0x80;
+
+  for(let i=0;i<n;i++){
+    if(ch1TriggerPending){ triggerCh1(); ch1TriggerPending=false; }
+    if(ch2TriggerPending){ triggerCh2(); ch2TriggerPending=false; }
+    if(ch3TriggerPending){ triggerCh3(); ch3TriggerPending=false; }
+    if(ch4TriggerPending){ triggerCh4(); ch4TriggerPending=false; }
+    stepFrameSequencer(dt);
+
+    let s1=0,s2=0,s3=0,s4=0;
+    if(powerOn){
+      if(ch1.enabled && ((io[0x12]>>3)&0x1F)!==0){
+        s1 = squareSample(io[0x13]|((io[0x14]&7)<<8), (io[0x11]>>6)&3, ch1, dt) * (ch1.envVol/15);
+      }
+      if(ch2.enabled && ((io[0x17]>>3)&0x1F)!==0){
+        s2 = squareSample(io[0x18]|((io[0x19]&7)<<8), (io[0x16]>>6)&3, ch2, dt) * (ch2.envVol/15);
+      }
+      if(ch3.enabled && (io[0x1A]&0x80)){
+        const volCode=(io[0x1C]>>5)&3;
+        const shift = volCode===0?99: volCode-1;
+        const raw = waveSample(io[0x1D]|((io[0x1E]&7)<<8), dt);
+        s3 = volCode===0 ? 0 : raw / Math.pow(2,shift);
+      }
+      if(ch4.enabled && ((io[0x21]>>3)&0x1F)!==0){
+        s4 = noiseSample(dt) * (ch4.envVol/15);
+      }
+    }
+
+    const pan = io[0x25];
+    let left=0, right=0;
+    if(pan&0x10) left+=s1; if(pan&0x01) right+=s1;
+    if(pan&0x20) left+=s2; if(pan&0x02) right+=s2;
+    if(pan&0x40) left+=s3; if(pan&0x04) right+=s3;
+    if(pan&0x80) left+=s4; if(pan&0x08) right+=s4;
+
+    const vol = io[0x24];
+    const lVol = ((vol>>4)&7)+1, rVol = (vol&7)+1;
+    outL[i] = (left/4) * (lVol/8) * 0.5;
+    outR[i] = (right/4) * (rVol/8) * 0.5;
+  }
+}
+
+function initAudio(){
+  if(audioCtx) return;
+  const Ctx = window.AudioContext || window.webkitAudioContext;
+  if(!Ctx) return;
+  audioCtx = new Ctx();
+  scriptNode = audioCtx.createScriptProcessor(2048, 0, 2);
+  scriptNode.onaudioprocess = audioProcess;
+  scriptNode.connect(audioCtx.destination);
+  audioEnabled = true;
+}
+function resumeAudio(){
+  if(audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+}
+
+// ===================== UI glue =====================
+const canvas = document.getElementById('screen');
+const ctx = canvas.getContext('2d');
+const imageData = ctx.createImageData(160,144);
+
+onFrame = function(data){
+  imageData.data.set(data);
+  ctx.putImageData(imageData,0,0);
+};
+
+const statusText = document.getElementById('statusText');
+const romTitleEl = document.getElementById('romTitle');
+const powerLed = document.getElementById('powerLed');
+const ledLabel = document.getElementById('ledLabel');
+const pauseBtn = document.getElementById('pauseBtn');
+const resetBtn = document.getElementById('resetBtn');
+const romInput = document.getElementById('romInput');
+
+let lastBuffer = null;
+let paused = false;
+
+function setLed(on){
+  powerLed.classList.toggle('on', on);
+  ledLabel.textContent = on ? 'playing' : (romLoaded ? 'paused' : 'off');
+}
+
+function drawBlankScreen(){
+  ctx.fillStyle = '#9bbc0f';
+  ctx.fillRect(0,0,160,144);
+}
+drawBlankScreen();
+
+romInput.addEventListener('change', (e)=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    lastBuffer = reader.result;
+    try{
+      const title = loadRom(lastBuffer);
+      romTitleEl.textContent = title || file.name;
+      statusText.innerHTML = 'Playing <b>' + (title || file.name) + '</b>';
+      paused = false;
+      pauseBtn.disabled = false;
+      resetBtn.disabled = false;
+      muteBtn.disabled = false;
+      pauseBtn.textContent = 'Pause';
+      setLed(true);
+      initAudio();
+      resumeAudio();
+    }catch(err){
+      statusText.textContent = 'Could not load that ROM file: ' + err.message;
+    }
+  };
+  reader.readAsArrayBuffer(file);
+});
+
+pauseBtn.addEventListener('click', ()=>{
+  if(!romLoaded) return;
+  paused = !paused;
+  pauseBtn.textContent = paused ? 'Resume' : 'Pause';
+  setLed(!paused);
+  if(!paused) resumeAudio();
+});
+
+resetBtn.addEventListener('click', ()=>{
+  if(!lastBuffer) return;
+  const title = loadRom(lastBuffer);
+  romTitleEl.textContent = title;
+  paused = false;
+  pauseBtn.textContent = 'Pause';
+  setLed(true);
+  resumeAudio();
+});
+
+const muteBtn = document.getElementById('muteBtn');
+let muted = false;
+muteBtn.addEventListener('click', ()=>{
+  muted = !muted;
+  muteBtn.textContent = muted ? 'Unmute' : 'Mute';
+  if(scriptNode){
+    if(muted) scriptNode.disconnect();
+    else scriptNode.connect(audioCtx.destination);
+  }
+});
+
+// ---- keyboard input ----
+const keyMap = {
+  'ArrowUp':'up', 'ArrowDown':'down', 'ArrowLeft':'left', 'ArrowRight':'right',
+  'KeyZ':'a', 'KeyX':'b', 'Enter':'start', 'ShiftLeft':'select', 'ShiftRight':'select'
+};
+window.addEventListener('keydown', (e)=>{
+  const k = keyMap[e.code];
+  if(k){ keys[k]=true; e.preventDefault(); }
+});
+window.addEventListener('keyup', (e)=>{
+  const k = keyMap[e.code];
+  if(k){ keys[k]=false; e.preventDefault(); }
+});
+
+// ---- on-screen touch/pointer buttons ----
+document.querySelectorAll('[data-key]').forEach(btn=>{
+  const k = btn.getAttribute('data-key');
+  const press = (ev)=>{ ev.preventDefault(); keys[k]=true; btn.classList.add('pressed'); };
+  const release = (ev)=>{ ev.preventDefault(); keys[k]=false; btn.classList.remove('pressed'); };
+  btn.addEventListener('pointerdown', press);
+  btn.addEventListener('pointerup', release);
+  btn.addEventListener('pointerleave', release);
+  btn.addEventListener('pointercancel', release);
+  btn.addEventListener('contextmenu', (ev)=>ev.preventDefault());
+});
+
+// ---- main loop ----
+function loop(){
+  if(romLoaded && !paused){
+    runFrame();
+  }
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+</script>
+</body>
+</html>
