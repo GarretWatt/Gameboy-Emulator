@@ -2,7 +2,6 @@
 
 A Game Boy emulator built from scratch in vanilla JavaScript, running entirely client-side in the browser. No frameworks, no external emulator libraries — just a CPU interpreter, a scanline-based graphics renderer, and a real-time audio synthesizer, all in a single self-contained HTML file.
 
-**[Try it live →](#)** *(replace with your hosted link)*
 
 ---
 
